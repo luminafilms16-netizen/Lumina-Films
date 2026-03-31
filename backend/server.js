@@ -11,7 +11,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ── Servir frontend estático ──────────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
 // ── Rutas API ─────────────────────────────────────────────────
 app.use('/api/auth',      require('./routes/auth'));
@@ -25,7 +25,7 @@ app.use('/api/dashboard', rDash);
 
 // ── Ruta catch-all → index.html ───────────────────────────────
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  res.sendFile(path.join(__dirname, 'frontend/index.html'));
 });
 
 // ── Manejo de errores global ──────────────────────────────────
