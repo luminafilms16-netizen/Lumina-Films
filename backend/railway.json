@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install --no-audit"
+  },
+  "deploy": {
+    "startCommand": "node server.js"
+  }
+}
