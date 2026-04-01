@@ -1,103 +1,193 @@
 const { Resend } = require('resend');
 const QRCode     = require('qrcode');
-const sharp      = require('sharp');
+const { createCanvas, loadImage } = require('canvas');
 require('dotenv').config();
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Escapa caracteres especiales XML para usar dentro del SVG
-function x(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 /**
- * Genera un PNG del ticket usando SVG + sharp.
+ * Genera un PNG del ticket usando canvas.
  */
 async function generateTicketPNG(ticketData) {
   const { nombre, codigo, pelicula, sala, fecha, hora, asientos, total } = ticketData;
 
-  const qrBuffer = await QRCode.toBuffer(codigo, {
-    width: 160, margin: 1,
-    color: { dark: '#000000', light: '#FFFFFF' }
-  });
-  const qrB64 = qrBuffer.toString('base64');
-
   const W = 520, H = 580;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
 
-  let seatBadges = '';
+  // ── Fondo ──────────────────────────────────────────────────
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#181510');
+  bgGrad.addColorStop(1, '#0e0c09');
+  ctx.fillStyle = bgGrad;
+  roundRect(ctx, 0, 0, W, H, 16);
+  ctx.fill();
+
+  // Borde dorado
+  ctx.strokeStyle = 'rgba(200,169,110,0.25)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, 0, 0, W, H, 16);
+  ctx.stroke();
+
+  // ── Header dorado ──────────────────────────────────────────
+  const hdrGrad = ctx.createLinearGradient(0, 0, W, 0);
+  hdrGrad.addColorStop(0,   '#c8a96e');
+  hdrGrad.addColorStop(0.5, '#e8c97e');
+  hdrGrad.addColorStop(1,   '#b8913e');
+  ctx.fillStyle = hdrGrad;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(W - 16, 0);
+  ctx.quadraticCurveTo(W, 0, W, 16);
+  ctx.lineTo(W, 80);
+  ctx.lineTo(0, 80);
+  ctx.lineTo(0, 16);
+  ctx.quadraticCurveTo(0, 0, 16, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Texto header
+  ctx.fillStyle = '#0a0800';
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText('LUMINA FILMS', 32, 46);
+  ctx.font = 'bold 10px Arial';
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillText('CINEMA EXPERIENCE', 32, 62);
+
+  // Badge E-TICKET
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  roundRect(ctx, W - 120, 24, 88, 24, 12);
+  ctx.fill();
+  ctx.fillStyle = '#0a0800';
+  ctx.font = 'bold 10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('E-TICKET', W - 76, 40);
+  ctx.textAlign = 'left';
+
+  // ── Sección película ───────────────────────────────────────
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(0, 80, W, 72);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 19px Arial';
+  const tituloText = pelicula.length > 38 ? pelicula.substring(0, 38) + '…' : pelicula;
+  ctx.fillText(tituloText, 32, 116);
+
+  ctx.fillStyle = '#c8a96e';
+  ctx.font = 'bold 11px Arial';
+  ctx.fillText(`ENTRADA CONFIRMADA  ·  ${asientos.length} ${asientos.length === 1 ? 'ASIENTO' : 'ASIENTOS'}`, 32, 138);
+
+  // Línea divisora
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath(); ctx.moveTo(0, 152); ctx.lineTo(W, 152); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Datos ──────────────────────────────────────────────────
+  const drawField = (label, value, x, y) => {
+    ctx.fillStyle = '#555555';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText(label, x, y);
+    ctx.fillStyle = '#dddddd';
+    ctx.font = '600 14px Arial';
+    ctx.fillText(value, x, y + 18);
+  };
+
+  drawField('SALA',      sala,  32,  188);
+  drawField('FECHA',     fecha, 200, 188);
+  drawField('HORA',      hora,  32,  242);
+  drawField('COMPRADOR', nombre.length > 22 ? nombre.substring(0, 22) + '…' : nombre, 200, 242);
+
+  // ── Asientos ───────────────────────────────────────────────
+  ctx.fillStyle = '#555555';
+  ctx.font = 'bold 10px Arial';
+  ctx.fillText('ASIENTOS', 32, 376);
+
   let sx = 32;
-  const sy = 390;
   asientos.forEach(a => {
     const label = `${a.fila}${a.columna}`;
     const bw = label.length * 9 + 16;
-    seatBadges += `
-      <rect x="${sx}" y="${sy}" width="${bw}" height="22" rx="4"
-            fill="rgba(200,169,110,0.12)" stroke="#c8a96e" stroke-width="0.8"/>
-      <text x="${sx + bw / 2}" y="${sy + 14}"
-            font-family="Arial,sans-serif" font-size="11" font-weight="700"
-            fill="#c8a96e" text-anchor="middle">${x(label)}</text>`;
+    ctx.fillStyle = 'rgba(200,169,110,0.12)';
+    roundRect(ctx, sx, 382, bw, 22, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#c8a96e';
+    ctx.lineWidth = 0.8;
+    roundRect(ctx, sx, 382, bw, 22, 4);
+    ctx.stroke();
+    ctx.fillStyle = '#c8a96e';
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, sx + bw / 2, 396);
+    ctx.textAlign = 'left';
     sx += bw + 6;
   });
 
-  const titulo    = pelicula.length > 38 ? pelicula.substring(0, 38) + '…' : pelicula;
-  const comprador = nombre.length > 22   ? nombre.substring(0, 22)   + '…' : nombre;
+  // ── Separador con muescas ──────────────────────────────────
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath(); ctx.moveTo(0, 428); ctx.lineTo(W, 428); ctx.stroke();
+  ctx.setLineDash([]);
 
-  const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
-    xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <defs>
-    <linearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"   stop-color="#c8a96e"/>
-      <stop offset="50%"  stop-color="#e8c97e"/>
-      <stop offset="100%" stop-color="#b8913e"/>
-    </linearGradient>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"   stop-color="#181510"/>
-      <stop offset="100%" stop-color="#0e0c09"/>
-    </linearGradient>
-    <clipPath id="rc"><rect width="${W}" height="${H}" rx="16"/></clipPath>
-  </defs>
-  <rect width="${W}" height="${H}" rx="16" fill="url(#bgGrad)"/>
-  <rect width="${W}" height="${H}" rx="16" fill="none" stroke="rgba(200,169,110,0.25)" stroke-width="1.5"/>
-  <rect x="0" y="0" width="${W}" height="80" fill="url(#hdrGrad)" clip-path="url(#rc)"/>
-  <rect x="0" y="64" width="${W}" height="16" fill="url(#hdrGrad)"/>
-  <text x="32" y="46" font-family="Arial Black,Arial,sans-serif" font-size="22" font-weight="900" fill="#0a0800" letter-spacing="3">LUMINA FILMS</text>
-  <text x="32" y="62" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="rgba(0,0,0,0.5)" letter-spacing="2">CINEMA EXPERIENCE</text>
-  <rect x="${W - 120}" y="24" width="88" height="24" rx="12" fill="rgba(0,0,0,0.18)"/>
-  <text x="${W - 76}" y="40" font-family="Arial,sans-serif" font-size="10" font-weight="800" fill="#0a0800" letter-spacing="2" text-anchor="middle">E-TICKET</text>
-  <rect x="0" y="80" width="${W}" height="72" fill="rgba(0,0,0,0.25)"/>
-  <line x1="0" y1="152" x2="${W}" y2="152" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="6,4"/>
-  <text x="32" y="116" font-family="Arial,sans-serif" font-size="19" font-weight="700" fill="#ffffff">${x(titulo)}</text>
-  <text x="32" y="138" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#c8a96e" letter-spacing="2">ENTRADA CONFIRMADA  ·  ${asientos.length} ${asientos.length === 1 ? 'ASIENTO' : 'ASIENTOS'}</text>
-  <text x="32"  y="188" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#555" letter-spacing="1.5">SALA</text>
-  <text x="32"  y="206" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#ddd">${x(sala)}</text>
-  <text x="200" y="188" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#555" letter-spacing="1.5">FECHA</text>
-  <text x="200" y="206" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#ddd">${x(fecha)}</text>
-  <text x="32"  y="242" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#555" letter-spacing="1.5">HORA</text>
-  <text x="32"  y="260" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#ddd">${x(hora)}</text>
-  <text x="200" y="242" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#555" letter-spacing="1.5">COMPRADOR</text>
-  <text x="200" y="260" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#ddd">${x(comprador)}</text>
-  <text x="32" y="376" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#555" letter-spacing="1.5">ASIENTOS</text>
-  ${seatBadges}
-  <line x1="0" y1="428" x2="${W}" y2="428" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="6,4"/>
-  <circle cx="-1"     cy="428" r="14" fill="#0a0a0a"/>
-  <circle cx="${W + 1}" cy="428" r="14" fill="#0a0a0a"/>
-  <rect x="0" y="428" width="${W}" height="${H - 428}" fill="rgba(0,0,0,0.2)"/>
-  <rect x="${W - 198}" y="440" width="166" height="126" rx="8" fill="#fff"/>
-  <image x="${W - 195}" y="443" width="160" height="120" href="data:image/png;base64,${qrB64}"/>
-  <text x="${W - 115}" y="577" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#444" letter-spacing="1" text-anchor="middle">ESCANEAR EN ENTRADA</text>
-  <text x="32" y="462" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#c8a96e" letter-spacing="2">${x(codigo)}</text>
-  <text x="32" y="490" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#444">TOTAL PAGADO</text>
-  <text x="32" y="516" font-family="Arial,sans-serif" font-size="22" font-weight="900" fill="#c8a96e">$${Number(total).toLocaleString('es-CO')}</text>
-  <text x="32" y="565" font-family="Arial,sans-serif" font-size="10" fill="#333">Lumina Films © ${new Date().getFullYear()}</text>
-</svg>`;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath(); ctx.arc(-1, 428, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W + 1, 428, 14, 0, Math.PI * 2); ctx.fill();
 
-  return sharp(Buffer.from(svg))
-    .png({ compressionLevel: 8 })
-    .toBuffer();
+  // Fondo zona QR
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(0, 428, W, H - 428);
+
+  // ── QR ─────────────────────────────────────────────────────
+  const qrDataUrl = await QRCode.toDataURL(codigo, { width: 160, margin: 1,
+    color: { dark: '#000000', light: '#FFFFFF' } });
+  const qrImg = await loadImage(qrDataUrl);
+  ctx.fillStyle = '#ffffff';
+  roundRect(ctx, W - 198, 440, 166, 126, 8);
+  ctx.fill();
+  ctx.drawImage(qrImg, W - 195, 443, 160, 120);
+
+  ctx.fillStyle = '#444444';
+  ctx.font = 'bold 9px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('ESCANEAR EN ENTRADA', W - 115, 577);
+  ctx.textAlign = 'left';
+
+  // ── Código, total, footer ──────────────────────────────────
+  ctx.fillStyle = '#c8a96e';
+  ctx.font = 'bold 11px Arial';
+  ctx.fillText(codigo, 32, 462);
+
+  ctx.fillStyle = '#444444';
+  ctx.font = 'bold 10px Arial';
+  ctx.fillText('TOTAL PAGADO', 32, 490);
+
+  ctx.fillStyle = '#c8a96e';
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText(`$${Number(total).toLocaleString('es-CO')}`, 32, 516);
+
+  ctx.fillStyle = '#333333';
+  ctx.font = '10px Arial';
+  ctx.fillText(`Lumina Films © ${new Date().getFullYear()}`, 32, 565);
+
+  return canvas.toBuffer('image/png');
+}
+
+// Helper para rectángulos redondeados
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 // ─── Recuperación de contraseña ──────────────────────────────────────────────
@@ -188,12 +278,12 @@ async function sendTicketConfirmation(toEmail, ticketData) {
     </body></html>`,
     attachments: [
       {
-        filename:    `QR-${codigo}.png`,
-        content:     qrBuffer.toString('base64'),
+        filename: `QR-${codigo}.png`,
+        content:  qrBuffer.toString('base64'),
       },
       {
-        filename:    `Tiquete-${codigo}.png`,
-        content:     ticketPNG.toString('base64'),
+        filename: `Tiquete-${codigo}.png`,
+        content:  ticketPNG.toString('base64'),
       }
     ]
   });
