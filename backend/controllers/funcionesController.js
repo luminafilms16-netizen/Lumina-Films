@@ -73,9 +73,13 @@ exports.crear = async (req, res) => {
 
     // ── Validación Bug #2: la función debe ser al menos 45 min en el futuro ──
     // Construimos la fecha+hora de la función y la comparamos con ahora + 45 min
-    const fechaHoraFuncion = new Date(`${fecha}T${hora.length === 5 ? hora + ':00' : hora}`);
+    // Construir fechaHoraFuncion en hora LOCAL (no UTC)
+    const [anio, mes, dia] = fecha.split('-').map(Number);
+    const [h, m] = hora.split(':').map(Number);
+    const fechaHoraFuncion = new Date(anio, mes - 1, dia, h, m, 0);
+
     const ahora = new Date();
-    const minimoFuturo = new Date(ahora.getTime() + 45 * 60 * 1000); // ahora + 45 min
+    const minimoFuturo = new Date(ahora.getTime() + 45 * 60 * 1000);
 
     if (fechaHoraFuncion < minimoFuturo) {
       return res.status(400).json({
