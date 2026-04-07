@@ -152,7 +152,7 @@ async function validar(forceCode=null){
   if(code===lastCode) return;
   lastCode=code;
   try{
-    const r=await post('/tiquetes/validar',{codigo:code});
+    const r=await post('/tiquetes/validar',{codigo:code,cliente_now:new Date().toISOString(),cliente_offset:new Date().getTimezoneOffset()});
     renderResult(r,code);
     ValidationHistory.add({code, estado:r.estado, message:r.message});
     renderLog();
@@ -181,9 +181,11 @@ function simulate(type){
 function renderResult(r,code){
   const area=document.getElementById('resultArea');
   const cfg={
-    valido:  {cls:'res-valid',   icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#4caf82"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>', title:'¡Acceso permitido!', titleColor:'#7de8b0'},
-    usado:   {cls:'res-used',    icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#d4a843"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>', title:'Ya utilizado', titleColor:'#d4a843'},
-    invalido:{cls:'res-invalid', icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#e05555"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>', title:'Código inválido', titleColor:'#ff9494'}
+    valido:     {cls:'res-valid',   icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#4caf82"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>', title:'¡Acceso permitido!', titleColor:'#7de8b0'},
+    usado:      {cls:'res-used',    icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#d4a843"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>', title:'Ya utilizado', titleColor:'#d4a843'},
+    invalido:   {cls:'res-invalid', icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#e05555"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>', title:'Código inválido', titleColor:'#ff9494'},
+    anticipado: {cls:'res-used',    icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#6eb5ff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>', title:'Aún no es hora', titleColor:'#6eb5ff'},
+    expirado:   {cls:'res-invalid', icon:'<svg width="48" height="48" viewBox="0 0 24 24" fill="#9e9e9e"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>', title:'Función finalizada', titleColor:'#9e9e9e'}
   };
   const c=cfg[r.estado]||cfg.invalido;
   const t=r.tiquete;
@@ -204,8 +206,10 @@ function renderResult(r,code){
     <button class="btn btn-ghost btn-sm" style="margin-top:var(--s5)" onclick="resetResult()">Nueva validación</button>
   </div></div>`;
 
-  if(r.estado==='valido') toast('✓ Acceso permitido','success',5000);
-  else if(r.estado==='usado') toast('⚠ Tiquete ya utilizado','info',5000);
+  if(r.estado==='valido')      toast('✓ Acceso permitido','success',5000);
+  else if(r.estado==='usado')  toast('⚠ Tiquete ya utilizado','info',5000);
+  else if(r.estado==='anticipado') toast('🕐 Demasiado temprano para ingresar','info',6000);
+  else if(r.estado==='expirado')   toast('⏰ La función ya finalizó','error',5000);
   else toast('✕ Código inválido','error',4000);
 }
 
@@ -223,7 +227,7 @@ function renderLog(){
     logEl.innerHTML='<p style="color:var(--smoke);font-size:13px;text-align:center;padding:var(--s5) 0">Sin validaciones registradas</p>';
     return;
   }
-  const iconBg={valido:'rgba(76,175,130,.15)',usado:'rgba(212,168,67,.15)',invalido:'rgba(224,85,85,.15)'};
+  const iconBg={valido:'rgba(76,175,130,.15)',usado:'rgba(212,168,67,.15)',invalido:'rgba(224,85,85,.15)',anticipado:'rgba(110,181,255,.15)',expirado:'rgba(158,158,158,.15)'};
   const iconSvg={
     valido:`<svg width="14" height="14" viewBox="0 0 24 24" fill="#4caf82"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
     usado:`<svg width="14" height="14" viewBox="0 0 24 24" fill="#d4a843"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`,

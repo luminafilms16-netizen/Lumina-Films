@@ -134,12 +134,12 @@ exports.comprar = async (req, res) => {
 // ── Validar tiquete ───────────────────────────────────────────
 exports.validar = async (req, res) => {
   try {
-    const { codigo } = req.body;
+    const { codigo, cliente_now, cliente_offset } = req.body;
     if (!codigo)
       return res.status(400).json({ ok: false, message: 'El código es obligatorio' });
 
     const [rows] = await db.query(
-      `SELECT t.*, f.fecha, f.hora, p.titulo AS pelicula, s.nombre AS sala
+      `SELECT t.*, f.fecha, f.hora, p.titulo AS pelicula, p.duracion, s.nombre AS sala
        FROM tiquetes t
        JOIN funciones f ON f.id = t.funcion_id
        JOIN peliculas p ON p.id = f.pelicula_id
@@ -158,6 +158,39 @@ exports.validar = async (req, res) => {
 
     if (tiquete.estado === 'cancelado')
       return res.json({ ok: false, estado: 'invalido', message: 'Este tiquete fue cancelado', tiquete });
+
+    // ── Validación de ventana de tiempo ──────────────────────
+    // Se acepta desde 15 min antes del inicio hasta el fin de la función
+    if (cliente_now && typeof cliente_offset === 'number') {
+      const ahoraUTC = new Date(cliente_now).getTime();
+
+      const [anio, mes, dia] = tiquete.fecha.split('-').map(Number);
+      const [h, m]           = String(tiquete.hora).split(':').map(Number);
+
+      // Convertir hora local de la función a UTC restando el offset del cliente
+      const inicioUTC = Date.UTC(anio, mes - 1, dia, h, m, 0) - (cliente_offset * 60 * 1000);
+      const finUTC    = inicioUTC + (tiquete.duracion * 60 * 1000);
+      const aperturaUTC = inicioUTC - (15 * 60 * 1000); // 15 min antes
+
+      if (ahoraUTC < aperturaUTC) {
+        const minutosRestantes = Math.ceil((aperturaUTC - ahoraUTC) / 60000);
+        return res.json({
+          ok: false,
+          estado: 'anticipado',
+          message: `Aún no es momento de ingresar. La validación abre 15 minutos antes de la función (en ${minutosRestantes} min).`,
+          tiquete
+        });
+      }
+
+      if (ahoraUTC > finUTC) {
+        return res.json({
+          ok: false,
+          estado: 'expirado',
+          message: 'La función ya finalizó. Este tiquete no puede ser validado.',
+          tiquete
+        });
+      }
+    }
 
     await db.query('UPDATE tiquetes SET estado = "usado" WHERE id = ?', [tiquete.id]);
 

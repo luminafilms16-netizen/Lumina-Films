@@ -304,6 +304,10 @@ async function openSeatModal(funcion){
     setTimeout(()=>location.href=`/pages/login.html?redirect=${encodeURIComponent(location.href)}`,1400);
     return;
   }
+  if(Auth.isAdmin()){
+    toast('Los administradores no pueden comprar tiquetes','info');
+    return;
+  }
   selectedFuncion=funcion; selectedSeats=[]; goStep(1);
   document.getElementById('modalTitle').textContent=funcion.pelicula||movieData?.titulo||'';
   document.getElementById('modalFuncionInfo').textContent=`${funcion.sala_nombre} · ${fmtDateShort(funcion.fecha)} · ${fmtTime(funcion.hora)}`;
