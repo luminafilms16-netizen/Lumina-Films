@@ -180,10 +180,11 @@ function renderNavbar(activePage = '') {
 
   const logoHtml = `<a href="/" class="nav-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none">
     ${getLuminaLogo(26)}
-    <span>
+    <span class="nav-logo-container">
       <span class="nav-logo-main"><em>Lumina</em> <span>Films</span></span>
       <span class="nav-logo-sub">Cinema Experience</span>
     </span>
+    
   </a>`;
 
   const html = `
