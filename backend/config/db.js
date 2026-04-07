@@ -11,7 +11,9 @@ const pool = mysql.createPool({
   connectionLimit:    10,
   queueLimit:         0,
   timezone: '+00:00',
-  charset:  'utf8mb4'
+  charset:  'utf8mb4',
+  dateStrings: true   // Evita que mysql2 convierta DATE/DATETIME a objetos JS Date,
+                      // lo que causaba desfase de zona horaria al serializar a JSON
 });
 
 // Verificar conexión al iniciar
