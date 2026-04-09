@@ -149,15 +149,15 @@ exports.validar = async (req, res) => {
     );
 
     if (!rows.length)
-      return res.status(404).json({ ok: false, estado: 'invalido', message: 'Tiquete no encontrado' });
+      return res.status(404).json({ ok: false, estado: 'invalido', message: 'Código no encontrado. Verifica que el código sea correcto.' });
 
     const tiquete = rows[0];
 
     if (tiquete.estado === 'usado')
-      return res.json({ ok: false, estado: 'usado', message: 'Este tiquete ya fue utilizado', tiquete });
+      return res.json({ ok: false, estado: 'usado', message: 'Este tiquete ya fue escaneado y utilizado anteriormente.', tiquete });
 
     if (tiquete.estado === 'cancelado')
-      return res.json({ ok: false, estado: 'invalido', message: 'Este tiquete fue cancelado', tiquete });
+      return res.json({ ok: false, estado: 'invalido', message: 'Este tiquete fue cancelado y no es válido para el ingreso.', tiquete });
 
     // ── Validación de ventana de tiempo ──────────────────────
     // Se acepta desde 15 min antes del inicio hasta el fin de la función
@@ -167,8 +167,10 @@ exports.validar = async (req, res) => {
       const [anio, mes, dia] = tiquete.fecha.split('-').map(Number);
       const [h, m]           = String(tiquete.hora).split(':').map(Number);
 
-      // Convertir hora local de la función a UTC restando el offset del cliente
-      const inicioUTC = Date.UTC(anio, mes - 1, dia, h, m, 0) - (cliente_offset * 60 * 1000);
+      // Convertir hora local de la función a UTC sumando el offset del cliente
+      // getTimezoneOffset() devuelve positivo para zonas oeste de UTC (Colombia UTC-5 = 300)
+      // Date.UTC interpreta como UTC, sumamos el offset para obtener el UTC real de la hora local
+      const inicioUTC = Date.UTC(anio, mes - 1, dia, h, m, 0) + (cliente_offset * 60 * 1000);
       const finUTC    = inicioUTC + (tiquete.duracion * 60 * 1000);
       const aperturaUTC = inicioUTC - (15 * 60 * 1000); // 15 min antes
 
@@ -177,7 +179,7 @@ exports.validar = async (req, res) => {
         return res.json({
           ok: false,
           estado: 'anticipado',
-          message: `Aún no es momento de ingresar. La validación abre 15 minutos antes de la función (en ${minutosRestantes} min).`,
+          message: `Aún no es momento de ingresar. Las puertas abren 15 minutos antes de la función (faltan ${minutosRestantes} min).`,
           tiquete
         });
       }
@@ -186,7 +188,7 @@ exports.validar = async (req, res) => {
         return res.json({
           ok: false,
           estado: 'expirado',
-          message: 'La función ya finalizó. Este tiquete no puede ser validado.',
+          message: 'La función ya ha finalizado. Este tiquete no puede ser utilizado.',
           tiquete
         });
       }
@@ -201,7 +203,7 @@ exports.validar = async (req, res) => {
       [tiquete.id]
     );
 
-    res.json({ ok: true, estado: 'valido', message: '✅ Tiquete válido. Acceso permitido.', tiquete: { ...tiquete, asientos } });
+    res.json({ ok: true, estado: 'valido', message: 'Tiquete válido. ¡Bienvenido!', tiquete: { ...tiquete, asientos } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, message: 'Error al validar tiquete' });
